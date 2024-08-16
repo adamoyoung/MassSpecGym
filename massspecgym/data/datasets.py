@@ -226,11 +226,13 @@ class SimulationDataset(MassSpecDataset):
         pth: Optional[Path] = None,
         return_mol_freq: bool = True,
         return_identifier: bool = True,
-        dtype: T.Type = torch.float32
+        dtype: T.Type = torch.float32,
+        ds_prefix: str = None
     ): 
         
         self.meta_transform = meta_transform
         self.meta_keys = meta_keys
+        self.ds_prefix = ds_prefix
         super().__init__(
             spec_transform=spec_transform,
             mol_transform=mol_transform,
@@ -279,6 +281,8 @@ class SimulationDataset(MassSpecDataset):
         metadata = self.metadata.iloc[i]
         other_feats = {}
         other_feats["smiles"] = metadata["smiles"]
+        if self.ds_prefix is not None:
+            other_feats["ds_prefix"] = self.ds_prefix
         if self.return_mol_freq:
             other_feats["mol_freq"] = torch.tensor(metadata["mol_freq"])
         if self.return_identifier:
@@ -303,6 +307,8 @@ class SimulationDataset(MassSpecDataset):
         # handle metadata
         collate_data.update(self.meta_transform.collate_fn(batch_data))
         # handle other stuff
+        if "ds_prefix" in batch_data:
+            collate_data["ds_prefix"] = batch_data["ds_prefix"].copy()
         if "smiles" in batch_data:
             collate_data["smiles"] = batch_data["smiles"].copy()
         if "mol_freq" in batch_data:
@@ -426,16 +432,12 @@ class RetrievalSimulationDataset(SimulationDataset):
             for key in c_mol_keys:
                 c_mol_batch_data[key].append(c_mol_feats[key])
         c_mol_collate_data = self.mol_transform.collate_fn(c_mol_batch_data)
-        # c_meta_feats = batch_data["candidates_meta_feats"]
-        # c_meta_keys = list(c_meta_feats[0].keys())
-        # c_meta_batch_data = 
         # package it
-        prefix = "" # "candidates_"
         for key in c_mol_keys:
-            c_collate_data[prefix+key] = c_mol_collate_data[key]
-        c_collate_data[prefix+"smiles"] = flatten_lol(batch_data["candidates_smiles"])
-        c_collate_data[prefix+"batch_ptr"] = torch.tensor([len(item) for item in batch_data["candidates_smiles"]])
-        c_collate_data[prefix+"labels"] = torch.cat(batch_data["candidates_labels"],dim=0)
+            c_collate_data[key] = c_mol_collate_data[key]
+        c_collate_data["smiles"] = flatten_lol(batch_data["candidates_smiles"])
+        c_collate_data["batch_ptr"] = torch.tensor([len(item) for item in batch_data["candidates_smiles"]])
+        c_collate_data["labels"] = torch.cat(batch_data["candidates_labels"],dim=0)
         # copy relevant keys
         collate_data["candidates_data"] = c_collate_data
         return collate_data

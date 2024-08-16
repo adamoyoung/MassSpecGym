@@ -269,10 +269,12 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         """
 
         batch_size = torch.max(outputs["true_batch_idxs"])+1
-        
+        ds_prefix = batch.get("ds_prefix",[""])[0]
+        prefix = f"{stage.to_pref()}{ds_prefix}"
+
         # Log loss
         self.log(
-            stage.to_pref() + "loss_step",
+            prefix + "loss_step",
             outputs["loss"],
             batch_size=batch_size,
             sync_dist=True,
@@ -290,7 +292,8 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
                 true_mzs=outputs["true_mzs"],
                 true_logprobs=outputs["true_logprobs"],
                 true_batch_idxs=outputs["true_batch_idxs"],
-                stage=stage
+                stage=stage,
+                prefix=prefix
             )
 
     def on_test_batch_end(
@@ -298,7 +301,9 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
     ) -> None:
         
         stage = Stage.TEST
-        
+        ds_prefix = batch.get("ds_prefix",[""])[0]
+        prefix = f"{stage.to_pref()}{ds_prefix}"
+
         self.on_batch_end(
             outputs=outputs,
             batch=batch,
@@ -313,7 +318,8 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
                 scores=outputs["retrieval_scores"],
                 labels=outputs["retrieval_labels"],
                 batch_ptr=outputs["retrieval_batch_ptr"],
-                stage=stage
+                stage=stage,
+                prefix=prefix
             )
             if self.df_test_path is not None:
                 self._update_df_test(metric_vals)
@@ -326,9 +332,12 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         true_mzs: torch.Tensor,
         true_logprobs: torch.Tensor,
         true_batch_idxs: torch.Tensor,
-        stage: Stage
+        stage: Stage,
+        prefix: str
     ) -> None:
         
+        if prefix == "":
+            prefix = stage.to_pref()
         batch_size = torch.max(true_batch_idxs).item()+1
         cos_sim = self.cos_sim_fn(
             true_mzs=true_mzs,
@@ -347,7 +356,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             pred_batch_idxs=pred_batch_idxs,
         )
         self._update_metric(
-            name=stage.to_pref() + "cos_sim",
+            name=prefix + "cos_sim",
             metric_class=MeanMetric,
             update_args=(cos_sim,),
             batch_size=batch_size,
@@ -357,7 +366,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             bootstrap=(stage == Stage.TEST)
         )
         self._update_metric(
-            name=stage.to_pref() + "cos_sim_obj",
+            name=prefix + "cos_sim_obj",
             metric_class=MeanMetric,
             update_args=(cos_sim_obj,),
             batch_size=batch_size,
@@ -373,6 +382,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
         labels: torch.Tensor,
         batch_ptr: torch.Tensor,
         stage: Stage,
+        prefix: str
     ) -> None:
         """
         Main evaluation method for the retrieval models. The retrieval step is evaluated by 
@@ -386,6 +396,8 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
             batch_ptr (torch.Tensor): Number of each sample's candidates in the concatenated tensors
         """
         assert stage == Stage.TEST, stage
+        if prefix == "":
+            prefix = stage.to_pref()
 
         # Initialize return dictionary to store metric values per sample
         metric_vals = {}
@@ -402,7 +414,7 @@ class SimulationMassSpecGymModel(MassSpecGymModel, ABC):
                 hit_rates.append(retrieval_hit_rate(scores_sample, labels_sample, top_k=at_k))
             hit_rates = torch.tensor(hit_rates, device=batch_ptr.device)
 
-            metric_name = f"{stage.to_pref()}hit_rate@{at_k}"
+            metric_name = f"{prefix}hit_rate@{at_k}"
             self._update_metric(
                 metric_name,
                 MeanMetric,

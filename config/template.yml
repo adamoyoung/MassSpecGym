@@ -4,7 +4,9 @@ wandb_project: "MSG"
 wandb_name: "template"
 # data
 pth: "data/MassSpecGym.tsv"
-candidates_pth: "data/MassSpecGym_retrieval_candidates_mass_with_test.json"
+candidates_pths: 
+  mass: "data/MassSpecGym_retrieval_candidates_mass_with_test.json"
+  formula: "data/MassSpecGym_retrieval_candidates_formula_with_test.json"
 meta_keys: ["adduct","precursor_mz","instrument_type","collision_energy"]
 fp_types: ["morgan","maccs","rdkit"]
 adducts: ["[M+H]+"]

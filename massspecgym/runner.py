@@ -158,28 +158,32 @@ def init_run(template_fp, custom_fp, checkpoint_dp, wandb_mode):
 
     train_dl = DataLoader(train_ds, shuffle=True, **dl_config)
     val_dl = DataLoader(val_ds, shuffle=False, **dl_config)
-    test_dl = DataLoader(test_ds, shuffle=False, **dl_config)
-    
+    test_dls = [DataLoader(test_ds, shuffle=False, **dl_config)]
+
     if config_d["do_retrieval"]:
         # TODO: refactor with test_dl later
         # we don't need to create separate datasets, can just overwrite...
-        ret_ds = RetrievalSimulationDataset(
-            pth=config_d["pth"],
-            meta_keys=config_d["meta_keys"],
-            spec_transform=spec_transform,
-            mol_transform=mol_transform,
-            meta_transform=meta_transform,
-            candidates_pth=config_d["candidates_pth"]
-        )
-        ret_dl_config = dl_config.copy()
-        ret_dl_config["batch_size"] = config_d["retrieval_batch_size"]
-        ret_dl_config["collate_fn"] = ret_ds.collate_fn
-        _, _, test_ret_ds = get_split_ss(
-            ret_ds,
-            config_d["split_type"],
-            subsample_frac=config_d["subsample_frac"]
-        )
-        test_dl = DataLoader(test_ret_ds, shuffle=False, **ret_dl_config)
+        test_dls = []
+        for candidates_name, candidates_pth in config_d["candidates_pths"].items():
+            ret_ds = RetrievalSimulationDataset(
+                pth=config_d["pth"],
+                meta_keys=config_d["meta_keys"],
+                spec_transform=spec_transform,
+                mol_transform=mol_transform,
+                meta_transform=meta_transform,
+                candidates_pth=candidates_pth,
+                ds_prefix=candidates_name+"_"
+            )
+            ret_dl_config = dl_config.copy()
+            ret_dl_config["batch_size"] = config_d["retrieval_batch_size"]
+            ret_dl_config["collate_fn"] = ret_ds.collate_fn
+            _, _, test_ret_ds = get_split_ss(
+                ret_ds,
+                config_d["split_type"],
+                subsample_frac=config_d["subsample_frac"]
+            )
+            test_dl = DataLoader(test_ret_ds, shuffle=False, **ret_dl_config)
+            test_dls.append(test_dl)
 
     logger = pl.loggers.WandbLogger(
         entity=config_d["wandb_entity"],
@@ -220,8 +224,9 @@ def init_run(template_fp, custom_fp, checkpoint_dp, wandb_mode):
     )
 
     # Test
-    trainer.test(
-        pl_model,
-        dataloaders=test_dl,
-        ckpt_path="best"
-    )
+    for test_dl in test_dls:
+        trainer.test(
+            pl_model,
+            dataloaders=test_dl,
+            ckpt_path="best"
+        )
